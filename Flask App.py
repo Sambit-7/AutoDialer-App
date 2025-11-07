@@ -1,0 +1,358 @@
+import os
+from flask import Flask, request, jsonify, render_template_string
+from twilio.rest import Client
+import pandas as pd
+
+# Twilio config (replace with your sandbox/test details or env vars)
+ACCOUNT_SID = 'ACc318f134209a099b816cd063cc20e6ef'
+AUTH_TOKEN = '35f6c17dd13737857cbac817b1646a22'
+TWILIO_NUMBER = '+1 507 416 1592'
+
+client = Client(ACCOUNT_SID, AUTH_TOKEN)
+app = Flask(__name__)
+
+call_logs = []
+
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if request.method == 'POST':
+        numbers_text = request.form['numbers']
+        numbers = [n.strip() for n in numbers_text.split('\n') if n.strip().startswith('+91')]  # Only test numbers
+        for number in numbers:
+            # Initiate each call (simulate or real Twilio API)
+            try:
+                call = client.calls.create(
+                    to=number,
+                    from_=TWILIO_NUMBER,
+                    twiml='<Response><Say>Hello! This is a test autodialer call.</Say></Response>'
+                )
+                call_logs.append({'number': number, 'status': 'Initiated', 'sid': call.sid})
+            except Exception as e:
+                call_logs.append({'number': number, 'status': 'Failed', 'error': str(e)})
+        return render_template_string(TEMPLATE, logs=call_logs)
+    return render_template_string(TEMPLATE, logs=call_logs)
+@app.route('/prompt', methods=['POST'])
+def prompt():
+    data = request.get_json()
+    task = data.get('task', '')
+    import re
+    match = re.search(r'call (\+?\d+)', task.lower())
+    if match:
+        number = match.group(1)
+        try:
+            # Only allow test numbers (modify for your use case)
+            if not number.startswith('+91'):  # Use your test prefix
+                return jsonify({'status': 'Rejected', 'error': 'Only +91 test numbers allowed'})
+            call = client.calls.create(
+                to=number,
+                from_=TWILIO_NUMBER,
+                twiml='<Response><Say>Hello! This is a test autodialer call.</Say></Response>'
+            )
+            return jsonify({'status': 'Initiated', 'sid': call.sid, 'number': number})
+        except Exception as e:
+            return jsonify({'status': 'Failed', 'error': str(e), 'number': number})
+    return jsonify({'status': 'No valid number found'})
+
+TEMPLATE = '''
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Autodialer</title>
+  <!-- favicon -->
+
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(120deg, #e0eafc, #cfdef3 100%);
+      min-height: 100vh;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #34495e;
+      padding: 1.2rem 0;
+    }
+
+    header img {
+      height: 44px;
+      margin-right: 16px;
+      border-radius: 8px;
+      background: white;
+      padding: 4px;
+    }
+    header span {
+      color: white;
+      font-size: 2.2rem;
+      letter-spacing: 1px;
+      font-weight: 700;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 26px auto 0 auto;
+      padding: 32px 24px 24px 24px;
+      background: rgba(255,255,255,0.97);
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(41, 128, 185, 0.06);
+    }
+
+    /* Prompt input bar styles */
+    .prompt-bar {
+      display: flex;
+      align-items: center;
+      margin-bottom: 22px;
+      gap: 10px;
+    }
+
+    #aiPrompt {
+      flex: 1;
+      padding: 13px 15px;
+      font-size: 1rem;
+      border: 2px solid #a7c7e7;
+      border-radius: 6px 0 0 6px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    #aiPrompt:focus {
+      border-color: #2980b9;
+    }
+
+    #callBtn {
+      background: linear-gradient(90deg, #4f8ffb 60%, #8f36ff 100%);
+      border: none;
+      padding: 13px 25px;
+      border-radius: 0 6px 6px 0;
+      color: white;
+      font-size: 1.04rem;
+      cursor: pointer;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      transition: background 0.2s, transform 0.15s;
+      animation: pulse 2s infinite;
+      position: relative;
+      z-index: 1;
+      box-shadow: 0 4px 16px rgba(79,143,251,0.15);
+    }
+
+    #callBtn:hover {
+      background: linear-gradient(90deg, #204b82 60%, #7f35ba 100%);
+      transform: scale(1.03);
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(79,143,251, 0.4); }
+      70% { box-shadow: 0 0 0 12px rgba(79,143,251, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(79,143,251, 0); }
+    }
+
+    .loadingSpinner {
+      display: none;
+      margin-left: 14px;
+    }
+
+    /* Illustration styles */
+    .illustration-area {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 14px;
+    }
+    .illustration-area svg {
+      height: 70px;
+      margin-left: 24px;
+    }
+
+    h1 {
+      color: #34495e;
+      font-size: 1.35rem;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    form {
+      margin-bottom: 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 120px;
+      max-width: 98%;
+      font-size: 1rem;
+      line-height: 1.4;
+      padding: 13px;
+      border-radius: 8px;
+      border: 2px solid #a7c7e7;
+      transition: border-color 0.2s;
+      margin-bottom: 0.7em;
+      outline: none;
+    }
+    textarea:focus { border-color: #2980b9; }
+    input[type="submit"] {
+      background: #2980b9;
+      color: white;
+      font-size: 1.1rem;
+      padding: 10px 22px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.3s;
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(41,128,185,0.11);
+    }
+    input[type="submit"]:hover {
+      background-color: #204b82;
+    }
+
+    h2 {
+      text-align: center;
+      color: #34495e;
+      margin-top: 40px;
+      font-size: 1.15rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.6rem;
+    }
+    th, td {
+      padding: 0.7rem 0.35rem;
+      border: 1px solid #c1d1e4;
+      text-align: center;
+      font-size: 0.93rem;
+    }
+    th {
+      background: linear-gradient(90deg, #4f8ffb 60%, #8f36ff 100%);
+      color: white;
+      font-weight: 500;
+    }
+    tr:nth-child(even) {
+      background-color: #f7fafe;
+    }
+    tr:hover {
+      background-color: #e2f0fc;
+      transition: background 0.2s;
+    }
+
+    @media (max-width: 600px) {
+      .container { padding: 12px 3vw; }
+      table, th, td { font-size: 0.83rem; }
+      .illustration-area svg { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    
+    <span>Autodialer</span>
+  </header>
+
+  <div class="container">
+    <!-- Top illustration -->
+    <div class="illustration-area">
+      <span style="color: #2980b9; font-size: 1.07rem;">
+        Your simple & AI-powered autodialer.<br>
+        Call hundreds automatically, just with a prompt!
+      </span>
+      <!-- Example SVG illustration: a phone icon with animation -->
+      <svg viewBox="0 0 64 64" fill="none">
+        <ellipse cx="32" cy="32" rx="30" ry="30" fill="#e0eafc"/>
+        <path d="M44 43C42.67 43 41.36 42.82 40.09 42.48C39.4 42.29 38.6 42.5 38.14 43.06L36.07 45.64C32.09 43.67 28.67 40.24 26.7 36.27L29.23 34.23C29.76 33.81 29.98 33.07 29.83 32.36C29.5 31.09 29.31 29.77 29.31 28.43C29.31 27.64 28.67 27 27.88 27H22.42C21.63 27 21 27.64 21 28.43C21 40.09 31.91 51 43.57 51C44.36 51 45 50.36 45 49.57V44.13C45 43.34 44.36 43 44 43Z"
+          fill="#8f36ff">
+            <animate attributeName="fill" values="#8f36ff;#4f8ffb;#8f36ff" dur="2s" repeatCount="indefinite"/>
+        </path>
+      </svg>
+    </div>
+
+    <!-- AI Prompt Call Bar -->
+    <div class="prompt-bar">
+      <input type="text" id="aiPrompt" placeholder="Type prompt, e.g., 'Call +919876543219'" autocomplete="off"/>
+      <button id="callBtn">
+        <svg width="18" height="18" style="vertical-align:middle;margin-right:5px" viewBox="0 0 20 20">
+          <path d="M2.003 5.884l3.292-.947a2 2 0 012.287.634l1.516 1.701c.488.547.654 1.32.43 2.009a10.978 10.978 0 004.797 4.797
+          c.688-.224 1.462-.057 2.009.43l1.701 1.516a2 2 0 01.634 2.287l-.947 3.292A2 2 0 0116.034 21H4a2 2 0 01-1.997-1.885C2.003 16.997
+          2 16.997 2 16.997V7.966a2 2 0 01.003-.082z" fill="white"/>
+        </svg>
+        Call by Prompt
+      </button>
+      <span class="loadingSpinner" id="loadingSpinner">
+        <svg width="25" height="25" viewBox="0 0 44 44" stroke="#4f8ffb">
+          <g fill="none" fill-rule="evenodd" stroke-width="4">
+            <circle cx="22" cy="22" r="20" stroke-opacity="0.3"/>
+            <path d="M22 4a18 18 0 1 1-4 35" stroke="#8f36ff">
+              <animateTransform attributeName="transform" type="rotate"
+                from="0 22 22" to="360 22 22" dur="0.9s" repeatCount="indefinite"/>
+            </path>
+          </g>
+        </svg>
+      </span>
+    </div>
+
+    <!-- Main form -->
+    <h1>Enter The Phone Numbers Below (one per line):</h1>
+    <form method="post">
+      <textarea name="numbers" placeholder="Enter numbers, one per line"></textarea>
+      <input type="submit" value="Start Autodial" />
+    </form>
+
+    <h2>Call Log:</h2>
+    <table>
+      <tr>
+        <th>Number</th>
+        <th>Status</th>
+        <th>SID</th>
+        <th>Error</th>
+      </tr>
+      {% for log in logs %}
+      <tr>
+        <td>{{ log['number'] }}</td>
+        <td>{{ log['status'] }}</td>
+        <td>{{ log.get('sid', '') }}</td>
+        <td>{{ log.get('error', '') }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  <script>
+    // When user clicks Call by Prompt, trigger a request to your API
+    document.getElementById('callBtn').onclick = function() {
+      const promptText = document.getElementById('aiPrompt').value.trim();
+      if(promptText) {
+        document.getElementById('loadingSpinner').style.display = 'inline-block';
+        fetch('/prompt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ task: promptText })
+        }).then(res => res.json())
+          .then(data => {
+            alert('Status: ' + data.status);
+            document.getElementById('loadingSpinner').style.display = 'none';
+          })
+          .catch(err => {
+            alert('Error calling API');
+            document.getElementById('loadingSpinner').style.display = 'none';
+          });
+      } else {
+        alert('Please type a prompt.');
+      }
+    };
+  </script>
+</body>
+</html>
+
+
+
+'''
+
+if __name__ == '__main__':
+    app.run(port=5000, debug=True)
+
+
